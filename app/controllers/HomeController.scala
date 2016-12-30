@@ -1,7 +1,6 @@
 package controllers
 
 import java.io.File
-import java.nio.file.Files
 import javax.inject._
 
 import play.api.data.Form
@@ -39,42 +38,57 @@ class HomeController @Inject()(val messagesApi: MessagesApi, configuration: play
     * Upload action
     */
   def upload = Action(parse.multipartFormData) { request =>
-    val fileOption = request.body.file("name").map {
+    var part = request.body.file("name")
+    val fileOption = part.map {
       case FilePart(key, filename, contentType, file) =>
         Logger.info(s"key = ${key}, filename = ${filename}, contentType = ${contentType}, file = $file")
-        processFile(file, filename).getOrElse("Error to process")
+        processTempFile(file, filename)
     }
-
-    Ok(s"file size = ${fileOption.getOrElse("No file")}")
+    val fileSize = if (fileOption.isDefined)
+      if (fileOption.get.isDefined) fileOption.get.get.length() else "Cannot process file"
+    else "No file"
+    Ok(s"file size = ${fileSize}")
   }
 
-  private def processFile(tempFile: TemporaryFile, fileName: String): Option[Long] = {
-    val outputFolderOption = configuration.getString("outputFolder")
-    outputFolderOption match {
-      case Some(outputFolderStr) => {
-        val outputFolder = new File(outputFolderStr)
-        if (outputFolder.exists && outputFolder.isDirectory) {
-          Logger.info(s"outputFolder = ${outputFolderStr}")
-          val checkNewFile = new File(s"${outputFolder.getAbsolutePath}/${fileName}")
-          if (checkNewFile.exists()) {
-            Logger.error(s"File '${checkNewFile.getAbsolutePath}' already exists")
-            None
-          } else {
-            val newFile = tempFile.moveTo(checkNewFile)
-            Logger.info(s"new file = ${newFile.getAbsolutePath}")
-            val size = Files.size(newFile.toPath)
-            Logger.info(s"size = ${size}")
-            Option(size.toLong)
-          }
-        } else {
-          Logger.error(s"invalid outputFolder = ${outputFolderStr}")
+  private def processTempFile(tempFile: TemporaryFile, fileName: String): Option[File] = {
+    val fileMove = moveToOutputFolder(tempFile, fileName)
+    if (fileMove.isDefined) {
+      sendMessage(fileMove.get.getAbsolutePath)
+    }
+    fileMove
+  }
+
+  private def moveToOutputFolder(tempFile: TemporaryFile, fileName: String): Option[File] = {
+    val outputFolderConfig = configuration.getString("outputFolder")
+    if (outputFolderConfig.isDefined) {
+      val outputFolderStr = outputFolderConfig.get
+      val outputFolder = new File(outputFolderStr)
+      if (outputFolder.exists && outputFolder.isDirectory) {
+        Logger.info(s"outputFolder = ${outputFolderStr}")
+        val checkNewFile = new File(s"${outputFolder.getAbsolutePath}/${fileName}")
+        if (checkNewFile.exists()) {
+          Logger.error(s"File '${checkNewFile.getAbsolutePath}' already exists")
           None
+        } else {
+          val newFile = tempFile.moveTo(checkNewFile)
+          Logger.info(s"new file = ${newFile.getAbsolutePath}")
+          Option(newFile)
         }
-      }
-      case None => {
-        Logger.error("variable 'outputFolder' is missing")
+      } else {
+        Logger.error(s"invalid outputFolder = ${outputFolderStr}")
         None
       }
+    } else {
+      Logger.error("variable 'outputFolder' is missing")
+      None
     }
   }
+
+  private def sendMessage(message: String): Unit = {
+
+    Logger.info(s"Sending message: $message")
+
+  }
+
+
 }
