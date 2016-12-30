@@ -1,25 +1,16 @@
 package controllers
 
 import java.io.File
-import java.nio.file.attribute.PosixFilePermission.{OWNER_READ, OWNER_WRITE}
-import java.nio.file.attribute.PosixFilePermissions
-import java.nio.file.{Files, Path}
-import java.util
+import java.nio.file.Files
 import javax.inject._
 
-import akka.stream.IOResult
-import akka.stream.scaladsl.{FileIO, Sink}
-import akka.util.ByteString
 import play.api.data.Form
 import play.api.data.Forms.{mapping, _}
 import play.api.i18n.MessagesApi
-import play.api.libs.streams.Accumulator
+import play.api.libs.Files.TemporaryFile
 import play.api.mvc.MultipartFormData.FilePart
 import play.api.mvc._
 import play.api.{Logger, i18n}
-import play.core.parsers.Multipart.FileInfo
-
-import scala.concurrent.Future
 
 case class FormData(name: String)
 
@@ -27,7 +18,7 @@ case class FormData(name: String)
   * Home controller
   */
 @Singleton
-class HomeController @Inject()(val messagesApi: MessagesApi) extends Controller with i18n.I18nSupport {
+class HomeController @Inject()(val messagesApi: MessagesApi, configuration: play.api.Configuration) extends Controller with i18n.I18nSupport {
 
   val form = Form(
     mapping(
@@ -44,41 +35,46 @@ class HomeController @Inject()(val messagesApi: MessagesApi) extends Controller 
       Ok(views.html.index(form))
     }
 
-  type FilePartHandler[A] = FileInfo => Accumulator[ByteString, FilePart[A]]
-
-  private def handleFilePartAsFile: FilePartHandler[File] = {
-    case FileInfo(partName, filename, contentType) =>
-      val attr = PosixFilePermissions.asFileAttribute(util.EnumSet.of(OWNER_READ, OWNER_WRITE))
-      val path: Path = Files.createTempFile("multipartBody", "tempFile", attr)
-      val fileSink: Sink[ByteString, Future[IOResult]] = FileIO.toPath(path)
-      val accumulator: Accumulator[ByteString, IOResult] = Accumulator(fileSink)
-      accumulator.map {
-        case IOResult(count, status) =>
-          Logger.info(s"count = $count, status = $status")
-          FilePart(partName, filename, contentType, path.toFile)
-      }(play.api.libs.concurrent.Execution.defaultContext)
-  }
-
   /**
-    * Uploads a file.
-    *
-    * @return
+    * Upload action
     */
-  def upload = Action(parse.multipartFormData(handleFilePartAsFile)) { implicit request =>
+  def upload = Action(parse.multipartFormData) { request =>
     val fileOption = request.body.file("name").map {
       case FilePart(key, filename, contentType, file) =>
         Logger.info(s"key = ${key}, filename = ${filename}, contentType = ${contentType}, file = $file")
-        val data = processFile(file)
-        data
+        processFile(file, filename).getOrElse("Error to process")
     }
 
-    Ok(s"file size = ${fileOption.getOrElse("no file")}")
+    Ok(s"file size = ${fileOption.getOrElse("No file")}")
   }
 
-  private def processFile(file: File) = {
-    val size = Files.size(file.toPath)
-    Logger.info(s"size = ${size}")
-    Files.deleteIfExists(file.toPath)
-    size
+  private def processFile(tempFile: TemporaryFile, fileName: String): Option[Long] = {
+    val outputFolderOption = configuration.getString("outputFolder")
+    outputFolderOption match {
+      case Some(outputFolderStr) => {
+        val outputFolder = new File(outputFolderStr)
+        if (outputFolder.exists && outputFolder.isDirectory) {
+          Logger.info(s"outputFolder = ${outputFolderStr}")
+          val checkNewFile = new File(s"${outputFolder.getAbsolutePath}/${fileName}")
+          if (checkNewFile.exists()) {
+            Logger.error(s"File '${checkNewFile.getAbsolutePath}' already exists")
+            None
+          } else {
+            val newFile = tempFile.moveTo(checkNewFile)
+            Logger.info(s"new file = ${newFile.getAbsolutePath}")
+            val size = Files.size(newFile.toPath)
+            Logger.info(s"size = ${size}")
+            Option(size.toLong)
+          }
+        } else {
+          Logger.error(s"invalid outputFolder = ${outputFolderStr}")
+          None
+        }
+      }
+      case None => {
+        Logger.error("variable 'outputFolder' is missing")
+        None
+      }
+    }
   }
 }

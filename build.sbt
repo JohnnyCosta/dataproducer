@@ -1,6 +1,5 @@
 name := """dataproducer"""
 organization := "org.dw.producer"
-
 version := "1.0-SNAPSHOT"
 
 lazy val root = (project in file(".")).enablePlugins(PlayScala)

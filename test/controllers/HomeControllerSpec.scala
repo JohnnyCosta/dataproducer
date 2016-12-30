@@ -6,22 +6,28 @@ import java.nio.file.Files
 import akka.stream.scaladsl.{FileIO, Source}
 import akka.util.ByteString
 import org.scalatestplus.play._
+import play.api.Configuration
 import play.api.i18n.MessagesApi
 import play.api.libs.ws.WSClient
 import play.api.mvc.MultipartFormData
 import play.api.test.Helpers._
 import play.api.test._
 
+
 /**
   * Spec test for home controller
   */
 class HomeControllerSpec extends PlaySpec with OneServerPerSuite {
 
+  //  implicit override lazy val app
+  //  = new GuiceApplicationBuilder().configure(Map("outputFolder" -> "disabled")).build()
+
   "HomeController GET" should {
 
     "render the index page from a new instance of controller" in {
       val messages = app.injector.instanceOf[MessagesApi]
-      val controller = new HomeController(messages)
+      val conf = app.injector.instanceOf[Configuration]
+      val controller = new HomeController(messages, conf)
       val home = controller.index().apply(FakeRequest())
 
       status(home) mustBe OK
@@ -46,6 +52,7 @@ class HomeControllerSpec extends PlaySpec with OneServerPerSuite {
       status(home) mustBe OK
       contentType(home) mustBe Some("text/html")
       contentAsString(home) must include("Upload File")
+
     }
   }
 
@@ -53,26 +60,38 @@ class HomeControllerSpec extends PlaySpec with OneServerPerSuite {
 
     "upload a file successfully" in {
 
+      val filename = "hello.txt"
+      val msg = "hello world"
+
       val tmpFile = java.io.File.createTempFile("prefix", "txt")
       tmpFile.deleteOnExit()
-      val msg = "hello world"
       Files.write(tmpFile.toPath, msg.getBytes())
 
       val url = s"http://localhost:${Helpers.testServerPort}/upload"
-      val responseFuture = ws.url(url).post(postSource(tmpFile))
+      val responseFuture = ws.url(url).post(postSource(tmpFile, filename))
       val response = await(responseFuture)
       response.status mustBe OK
       response.body mustBe "file size = 11"
 
+      //      app.configuration.getString("outputFolder") mustBe Some("disabled")
+
       val request = FakeRequest(POST, "/upload").withHeaders("Host" -> "localhost")
       val home = route(app, request).get
+
+      // Check output file
+      val checkFile = new File(app.configuration.getString("outputFolder").get + "/" + filename)
+      checkFile.exists() mustBe true
+      checkFile.length() mustBe 11
+
+      // Remove file
+      checkFile.delete()
     }
 
   }
 
-  def postSource(tmpFile: File): Source[MultipartFormData.Part[Source[ByteString, _]], _] = {
+  def postSource(tmpFile: File, filename: String): Source[MultipartFormData.Part[Source[ByteString, _]], _] = {
     import play.api.mvc.MultipartFormData._
-    Source(FilePart("name", "hello.txt", Option("text/plain"),
+    Source(FilePart("name", filename, Option("text/plain"),
       FileIO.fromPath(tmpFile.toPath)) :: DataPart("key", "value") :: List())
   }
 
