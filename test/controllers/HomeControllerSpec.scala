@@ -8,6 +8,7 @@ import akka.util.ByteString
 import org.scalatestplus.play._
 import play.api.Configuration
 import play.api.i18n.MessagesApi
+import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.ws.WSClient
 import play.api.mvc.MultipartFormData
 import play.api.test.Helpers._
@@ -19,8 +20,8 @@ import play.api.test._
   */
 class HomeControllerSpec extends PlaySpec with OneServerPerSuite {
 
-  //  implicit override lazy val app
-  //  = new GuiceApplicationBuilder().configure(Map("outputFolder" -> "disabled")).build()
+  implicit override lazy val app
+  = new GuiceApplicationBuilder().configure(Map("kafka.enable" -> "false")).build()
 
   "HomeController GET" should {
 
@@ -73,13 +74,13 @@ class HomeControllerSpec extends PlaySpec with OneServerPerSuite {
       response.status mustBe OK
       response.body mustBe "file size = 11"
 
-      //      app.configuration.getString("outputFolder") mustBe Some("disabled")
+      app.configuration.getBoolean("kafka.enable") mustBe Some(false)
 
       val request = FakeRequest(POST, "/upload").withHeaders("Host" -> "localhost")
       val home = route(app, request).get
 
       // Check output file
-      val checkFile = new File(app.configuration.getString("outputFolder").get + "/" + filename)
+      val checkFile = new File(app.configuration.getString("output.folder").get + "/" + filename)
       checkFile.exists() mustBe true
       checkFile.length() mustBe 11
 

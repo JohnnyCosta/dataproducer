@@ -1,8 +1,10 @@
 package controllers
 
 import java.io.File
+import java.util.Properties
 import javax.inject._
 
+import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
 import play.api.data.Form
 import play.api.data.Forms.{mapping, _}
 import play.api.i18n.MessagesApi
@@ -59,12 +61,12 @@ class HomeController @Inject()(val messagesApi: MessagesApi, configuration: play
   }
 
   private def moveToOutputFolder(tempFile: TemporaryFile, fileName: String): Option[File] = {
-    val outputFolderConfig = configuration.getString("outputFolder")
+    val outputFolderConfig = configuration.getString("output.folder")
     if (outputFolderConfig.isDefined) {
       val outputFolderStr = outputFolderConfig.get
       val outputFolder = new File(outputFolderStr)
       if (outputFolder.exists && outputFolder.isDirectory) {
-        Logger.info(s"outputFolder = ${outputFolderStr}")
+        Logger.info(s"'output.folder' = ${outputFolderStr}")
         val checkNewFile = new File(s"${outputFolder.getAbsolutePath}/${fileName}")
         if (checkNewFile.exists()) {
           Logger.error(s"File '${checkNewFile.getAbsolutePath}' already exists")
@@ -75,18 +77,43 @@ class HomeController @Inject()(val messagesApi: MessagesApi, configuration: play
           Option(newFile)
         }
       } else {
-        Logger.error(s"invalid outputFolder = ${outputFolderStr}")
+        Logger.error(s"invalid 'output.folder' = ${outputFolderStr}")
         None
       }
     } else {
-      Logger.error("variable 'outputFolder' is missing")
+      Logger.error("variable 'output.folder' is missing")
       None
     }
   }
 
+
   private def sendMessage(message: String): Unit = {
 
-    Logger.info(s"Sending message: $message")
+    if (configuration.getBoolean("kafka.enable").get) {
+      Logger.info(s"Sending message: $message")
+
+      val topicName = "datatopic"
+
+      val props = new Properties()
+      props.put("bootstrap.servers", "localhost:9092")
+      props.put("acks", "all")
+      props.put("retries", 0.asInstanceOf[Integer])
+      props.put("batch.size", 16384.asInstanceOf[Integer])
+      props.put("linger.ms", 0.asInstanceOf[Integer])
+      props.put("buffer.memory", 33554432.asInstanceOf[Integer])
+      props.put("max.block.ms", long2Long(10000))
+      props.put("request.timeout.ms", 10000.asInstanceOf[Integer])
+      props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+      props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+
+      val producer = new KafkaProducer[String, String](props);
+      val sendFuture = producer.send(new ProducerRecord[String, String](topicName, null, message))
+      val meta = sendFuture.get()
+      Logger.info(s"send checksum '${meta.checksum()}'")
+      producer.close()
+    } else {
+      Logger.info("Kafka configuration is disabled")
+    }
 
   }
 
