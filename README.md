@@ -1,3 +1,12 @@
+Data producer
+=============
+
+The data producer solution was created using Scala 2.11 and Play 2.5 for storing incomming files and sending a message.
+It requires a kafka messaging solution to create a communication between the front-end application (data producer) and backend (data consumer)
+
+Requires:
+- Java 8
+
 Start zookeeper
 --------------
 Stand alone:
@@ -15,7 +24,7 @@ bin/zkServer.sh start conf/zoo_sample.cfg
 bin/zkServer.sh start conf/zoo_sample2.cfg
 bin/zkServer.sh start conf/zoo_sample3.cfg
 
-do not forget id file
+do not forget id files
 echo "1" > /tmp/zookeeper/myid
 echo "2" > /tmp/zookeeper2/myid
 echo "3" > /tmp/zookeeper3/myid
@@ -40,7 +49,7 @@ bin/kafka-server-start.sh config/server.properties
 bin/kafka-server-start.sh config/server2.properties
 bin/kafka-server-start.sh config/server3.properties
 
-Create topic
+create topic
 bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 2 --partitions 2 --topic datatopic
 
 modify topic

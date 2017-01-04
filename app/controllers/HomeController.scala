@@ -87,15 +87,19 @@ class HomeController @Inject()(val messagesApi: MessagesApi, configuration: play
   }
 
 
+  /**
+    * Send a message using kafka producer API
+    * @param message Message is the path to the file
+    */
   private def sendMessage(message: String): Unit = {
 
-    if (configuration.getBoolean("kafka.enable").get) {
+    if (configuration.getBoolean("kafka.enable").getOrElse(false)) {
       Logger.info(s"Sending message: $message")
 
       val topicName = "datatopic"
 
       val props = new Properties()
-      props.put("bootstrap.servers", "localhost:9092")
+      props.put("bootstrap.servers", configuration.getString("kafka.servers").getOrElse("localhost:9092") )
       props.put("acks", "all")
       props.put("retries", 0.asInstanceOf[Integer])
       props.put("batch.size", 16384.asInstanceOf[Integer])
